@@ -473,9 +473,6 @@ def main():
 
     app.run_polling()
 
-if __name__ == "__main__":
-    main()
-
 import threading
 from http.server import HTTPServer, BaseHTTPRequestHandler
 
@@ -491,3 +488,8 @@ def run_web():
     server.serve_forever()
 
 threading.Thread(target=run_web).start()
+
+if __name__ == "__main__":
+    main()
+
+
