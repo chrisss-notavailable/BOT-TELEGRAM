@@ -1,5 +1,7 @@
 import sqlite3
 from datetime import datetime, timedelta
+import os
+from dotenv import load_dotenv
 
 from telegram import (
     Update,
@@ -22,7 +24,27 @@ from telegram.ext import (
 from apscheduler.schedulers.background import BackgroundScheduler
 
 
-TOKEN = "8638926936:AAGSmoOdlzr3S_LBPIMANMOjOXAfCQO7aSA"
+# ================= TOKEN =================
+
+load_dotenv("bot.env")
+
+TOKEN = os.getenv("BOT_TOKEN")
+
+if not TOKEN:
+    raise ValueError("BOT_TOKEN tidak ditemukan di bot.env")
+
+
+# ================= HARI MAP =================
+
+hari_map = {
+    "Monday": "Senin",
+    "Tuesday": "Selasa",
+    "Wednesday": "Rabu",
+    "Thursday": "Kamis",
+    "Friday": "Jumat",
+    "Saturday": "Sabtu",
+    "Sunday": "Minggu"
+}
 
 
 # ================= DATABASE =================
@@ -95,20 +117,14 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 
-# ================= NAVIGASI MENU =================
+# ================= NAVIGASI =================
 
 async def buka_jadwal(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(
-        "📅 Menu Jadwal",
-        reply_markup=menu_jadwal()
-    )
+    await update.message.reply_text("📅 Menu Jadwal", reply_markup=menu_jadwal())
 
 
 async def buka_todo(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(
-        "📝 Menu ToDo",
-        reply_markup=menu_todo()
-    )
+    await update.message.reply_text("📝 Menu ToDo", reply_markup=menu_todo())
 
 
 async def kembali(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -130,7 +146,6 @@ async def input_hari(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data["hari"] = update.message.text
 
     await update.message.reply_text("Masukkan jam (HH:MM)")
-
     return JAM
 
 
@@ -139,7 +154,6 @@ async def input_jam(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data["jam"] = update.message.text
 
     await update.message.reply_text("Masukkan mata kuliah")
-
     return MATKUL
 
 
@@ -207,6 +221,10 @@ async def hapus_jadwal(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     conn.close()
 
+    if not rows:
+        await update.message.reply_text("❌ Tidak ada jadwal untuk dihapus.")
+        return
+
     keyboard = []
 
     for r in rows:
@@ -245,7 +263,6 @@ TASK, DEADLINE = range(2)
 async def tambah_task(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await update.message.reply_text("Masukkan task")
-
     return TASK
 
 
@@ -254,7 +271,6 @@ async def input_task(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data["task"] = update.message.text
 
     await update.message.reply_text("Masukkan deadline (YYYY-MM-DD HH:MM)")
-
     return DEADLINE
 
 
@@ -300,12 +316,7 @@ async def lihat_task(update: Update, context: ContextTypes.DEFAULT_TYPE):
             [InlineKeyboardButton("✅ Selesai", callback_data=f"done_{r[0]}")]
         ])
 
-        text = f"""
-📝 {r[1]}
-
-Deadline: {r[2]}
-Status: {r[3]}
-"""
+        text = f"📝 {r[1]}\n\nDeadline: {r[2]}\nStatus: {r[3]}"
 
         await update.message.reply_text(text, reply_markup=keyboard)
 
@@ -345,9 +356,7 @@ async def progress(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     conn.close()
 
-    await update.message.reply_text(
-        f"📊 Progress Task\n\n{done}/{total} selesai"
-    )
+    await update.message.reply_text(f"📊 Progress Task\n\n{done}/{total} selesai")
 
 
 # ================= REMINDER =================
@@ -357,7 +366,7 @@ async def reminder_jam7(app):
     conn = sqlite3.connect("data.db")
     c = conn.cursor()
 
-    hari = datetime.now().strftime("%A")
+    hari = hari_map[datetime.now().strftime("%A")]
 
     c.execute("SELECT user_id,jam,matkul FROM jadwal WHERE hari=?", (hari,))
     rows = c.fetchall()
@@ -378,7 +387,7 @@ async def reminder_1jam(app):
 
     target = (now + timedelta(hours=1)).strftime("%H:%M")
 
-    hari = now.strftime("%A")
+    hari = hari_map[now.strftime("%A")]
 
     conn = sqlite3.connect("data.db")
     c = conn.cursor()
@@ -404,7 +413,7 @@ def main():
 
     app = ApplicationBuilder().token(TOKEN).build()
 
-    scheduler = BackgroundScheduler()
+    scheduler = BackgroundScheduler(timezone="Asia/Jakarta")
 
     scheduler.add_job(lambda: app.create_task(reminder_jam7(app)), "cron", hour=7)
     scheduler.add_job(lambda: app.create_task(reminder_1jam(app)), "interval", minutes=1)
@@ -414,9 +423,9 @@ def main():
     conv_jadwal = ConversationHandler(
         entry_points=[MessageHandler(filters.Regex("➕ Tambah Jadwal"), tambah_jadwal)],
         states={
-            HARI: [MessageHandler(filters.TEXT, input_hari)],
-            JAM: [MessageHandler(filters.TEXT, input_jam)],
-            MATKUL: [MessageHandler(filters.TEXT, input_matkul)],
+            HARI: [MessageHandler(filters.TEXT & ~filters.COMMAND, input_hari)],
+            JAM: [MessageHandler(filters.TEXT & ~filters.COMMAND, input_jam)],
+            MATKUL: [MessageHandler(filters.TEXT & ~filters.COMMAND, input_matkul)],
         },
         fallbacks=[]
     )
@@ -424,8 +433,8 @@ def main():
     conv_task = ConversationHandler(
         entry_points=[MessageHandler(filters.Regex("➕ Tambah Task"), tambah_task)],
         states={
-            TASK: [MessageHandler(filters.TEXT, input_task)],
-            DEADLINE: [MessageHandler(filters.TEXT, input_deadline)],
+            TASK: [MessageHandler(filters.TEXT & ~filters.COMMAND, input_task)],
+            DEADLINE: [MessageHandler(filters.TEXT & ~filters.COMMAND, input_deadline)],
         },
         fallbacks=[]
     )
